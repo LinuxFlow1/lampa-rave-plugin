@@ -1,16 +1,16 @@
 {
     "name": "rave",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "display_name": "Rave Integration",
     "description": "Интеграция с сервисом Rave для совместного просмотра",
     "author": "Lampa User",
-    "homepage": "https://github.com/yourusername/lampa-rave-plugin",
+    "homepage": "https://github.com/LinuxFlow1/lampa-rave-plugin",
     "repository": {
         "type": "git",
-        "url": "https://github.com/yourusername/lampa-rave-plugin.git"
+        "url": "https://github.com/LinuxFlow1/lampa-rave-plugin.git"
     },
     "license": "MIT",
-    "main": "lampa-rave-plugin.min.js",
+    "main": "lampa-rave-plugin.js",
     "keywords": [
         "lampa",
         "plugin",
