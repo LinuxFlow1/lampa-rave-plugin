@@ -10,7 +10,7 @@
     // Название плагина
     const pluginName = 'rave';
     // Версия плагина
-    const version = '1.0.1';
+    const version = '1.0.3';
 
     // Иконка для меню
     const icon = `
@@ -22,15 +22,10 @@
 
     // Объект конфигурации плагина
     const config = {
-        // Автор плагина
         author: 'Lampa User',
-        // Название плагина
         name: 'Rave Integration',
-        // Версия плагина
         version: version,
-        // Описание плагина
         description: 'Интеграция с сервисом Rave для совместного просмотра',
-        // URL для установки плагина
         path: 'lampa-rave-plugin.js'
     };
 
@@ -53,6 +48,8 @@
                 videoUrl = data.url;
             } else if (data.video_url) {
                 videoUrl = data.video_url;
+            } else if (data.stream) {
+                videoUrl = data.stream;
             } else {
                 // Если нет прямой ссылки, создаем идентификатор для поиска
                 // Формат: название + год + тип (фильм/сериал)
@@ -130,12 +127,190 @@
         }
     }
 
+    // Функция для показа модального окна с ссылкой
+    function showLinkModal(link) {
+        if (!link) return;
+        
+        Lampa.Modal.open({
+            title: 'Ссылка для Rave',
+            html: `
+                <div class="rave-link-modal">
+                    <div class="rave-link-container">
+                        <input type="text" class="rave-link-input" value="${link}" readonly>
+                    </div>
+                    <div class="rave-link-buttons">
+                        <div class="rave-copy-button selector">Копировать</div>
+                        <div class="rave-open-button selector">Открыть в браузере</div>
+                    </div>
+                </div>
+            `,
+            size: 'medium',
+            onBack: () => {
+                Lampa.Modal.close();
+            },
+            onSelect: (a) => {
+                if (a.target.classList.contains('rave-copy-button')) {
+                    const input = document.querySelector('.rave-link-input');
+                    if (input) {
+                        input.select();
+                        copyToClipboard(input.value).then(success => {
+                            if (success) {
+                                showNotification('Ссылка скопирована в буфер обмена');
+                            } else {
+                                showNotification('Ошибка при копировании ссылки');
+                            }
+                        });
+                    }
+                } else if (a.target.classList.contains('rave-open-button')) {
+                    const input = document.querySelector('.rave-link-input');
+                    if (input && input.value) {
+                        window.open(input.value, '_blank');
+                    }
+                }
+            }
+        });
+        
+        // Добавляем стили для модального окна
+        const modalStyle = document.createElement('style');
+        modalStyle.textContent = `
+            .rave-link-modal {
+                padding: 20px;
+            }
+            .rave-link-container {
+                margin-bottom: 20px;
+            }
+            .rave-link-input {
+                width: 100%;
+                padding: 10px;
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 5px;
+                color: white;
+                font-size: 16px;
+            }
+            .rave-link-buttons {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+            }
+            .rave-copy-button, .rave-open-button {
+                flex: 1;
+                padding: 10px;
+                text-align: center;
+                background-color: rgba(0, 0, 0, 0.3);
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .rave-copy-button.focus, .rave-open-button.focus {
+                background-color: rgba(255, 87, 34, 0.5);
+            }
+        `;
+        document.head.appendChild(modalStyle);
+        
+        // Фокус на первую кнопку
+        setTimeout(() => {
+            const firstButton = document.querySelector('.rave-copy-button');
+            if (firstButton) {
+                Lampa.Controller.focus(firstButton);
+            }
+        }, 100);
+    }
+
+    // Функция для добавления кнопки Rave в плеер
+    function addRaveButtonToPlayer() {
+        try {
+            // Проверяем, есть ли активный плеер
+            if (!Lampa.Player.opened()) return;
+            
+            console.log('Rave Plugin: Добавление кнопки в плеер');
+            
+            // Получаем контейнер для кнопок
+            const playerPanel = document.querySelector('.player-panel');
+            if (!playerPanel) {
+                console.error('Rave Plugin: Не найдена панель плеера');
+                return;
+            }
+            
+            // Проверяем, возможно кнопка уже добавлена
+            if (playerPanel.querySelector('.player-panel__rave')) {
+                console.log('Rave Plugin: Кнопка уже добавлена в плеер');
+                return;
+            }
+            
+            // Получаем контейнер для правых кнопок (где находится кнопка качества)
+            const rightGroup = playerPanel.querySelector('.player-panel__right');
+            if (!rightGroup) {
+                console.error('Rave Plugin: Не найдена правая группа кнопок плеера');
+                return;
+            }
+            
+            // Создаем кнопку для плеера
+            const raveButton = document.createElement('div');
+            raveButton.className = 'player-panel__button player-panel__rave selector';
+            raveButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                </svg>
+            `;
+            
+            // Добавляем обработчик клика
+            raveButton.addEventListener('click', async function() {
+                // Получаем текущие данные о воспроизводимом контенте
+                const currentItem = Lampa.Player.currentItem();
+                if (!currentItem) {
+                    showNotification('Ошибка: Не удалось получить данные о контенте');
+                    return;
+                }
+                
+                console.log('Rave Plugin: Данные текущего видео', currentItem);
+                
+                // Получаем текущий URL стрима
+                const currentStream = Lampa.Player.url();
+                if (!currentStream) {
+                    showNotification('Ошибка: Не удалось получить URL стрима');
+                    return;
+                }
+                
+                console.log('Rave Plugin: Текущий URL стрима', currentStream);
+                
+                // Создаем данные для ссылки
+                const linkData = {
+                    ...currentItem,
+                    stream: currentStream
+                };
+                
+                // Создаем ссылку для Rave
+                const raveLink = createRaveLink(linkData);
+                if (!raveLink) {
+                    showNotification('Ошибка: Не удалось создать ссылку Rave');
+                    return;
+                }
+                
+                // Показываем модальное окно с ссылкой
+                showLinkModal(raveLink);
+            });
+            
+            // Добавляем кнопку перед первым элементом в правой группе
+            const firstButton = rightGroup.firstChild;
+            if (firstButton) {
+                rightGroup.insertBefore(raveButton, firstButton);
+            } else {
+                rightGroup.appendChild(raveButton);
+            }
+            
+            console.log('Rave Plugin: Кнопка успешно добавлена в плеер');
+        } catch (error) {
+            console.error('Rave Plugin: Ошибка при добавлении кнопки в плеер', error);
+        }
+    }
+
     // Функция для добавления кнопки Rave на страницу фильма/сериала
     function addRaveButton() {
         try {
             // Проверяем, находимся ли мы на странице с фильмом или сериалом
             const activeComponent = Lampa.Activity.active();
-            if (!activeComponent || activeComponent.component !== 'full') return;
+            if (!activeComponent || !['full', 'movie', 'tv'].includes(activeComponent.component)) return;
             
             // Выводим в консоль информацию о текущем компоненте для отладки
             console.log('Rave Plugin: Текущий компонент', activeComponent.component, activeComponent);
@@ -145,17 +320,19 @@
                 '.view--torrent .view--torrent__buttons',
                 '.full-start__buttons',
                 '.button--filter', // Родительский контейнер кнопок
-                '.full-start__details' // Контейнер с деталями
+                '.full-start__details', // Контейнер с деталями
+                '.card--button', // Кнопки на карточке
+                '.card--actions' // Действия на карточке
             ];
             
             let actionsElement = null;
             
             // Проходим по всем возможным селекторам
             for (const selector of selectors) {
-                const element = document.querySelector(selector);
-                if (element) {
-                    console.log('Rave Plugin: Найден элемент для добавления кнопки', selector);
-                    actionsElement = element;
+                const elements = document.querySelectorAll(selector);
+                if (elements && elements.length) {
+                    console.log('Rave Plugin: Найден элемент для добавления кнопки', selector, elements[0]);
+                    actionsElement = elements[0];
                     break;
                 }
             }
@@ -238,15 +415,8 @@
                     return;
                 }
                 
-                // Копируем ссылку в буфер обмена
-                const success = await copyToClipboard(raveLink);
-                
-                // Показываем уведомление
-                if (success) {
-                    showNotification('Ссылка Rave скопирована в буфер обмена');
-                } else {
-                    showNotification('Ошибка при копировании ссылки');
-                }
+                // Показываем модальное окно с ссылкой
+                showLinkModal(raveLink);
             });
             
             // Добавляем кнопку на страницу
@@ -257,205 +427,53 @@
         }
     }
 
-    // Функция для добавления пункта меню в настройки
-    function addSettingsMenuItem() {
-        try {
-            // Добавляем раздел в настройки плагинов
-            Lampa.Settings.listener.follow('open', function(e) {
-                if (e.name === 'plugins') {
-                    const field = e.body.find('[data-component="rave"]');
-                    
-                    if (field.length === 0) {
-                        e.body.find('.settings-param__list').append(`
-                            <div class="settings-param selector" data-component="rave">
-                                <div class="settings-param__name">Rave Integration</div>
-                                <div class="settings-param__value"></div>
-                                <div class="settings-param__descr">Интеграция с сервисом Rave для совместного просмотра</div>
-                            </div>
-                        `);
-                        
-                        e.body.find('[data-component="rave"]').on('hover:enter', function() {
-                            // Показываем информацию о плагине
-                            Lampa.Modal.open({
-                                title: 'Rave Integration',
-                                html: `
-                                    <div class="about">
-                                        <div class="about__title">Версия: ${version}</div>
-                                        <div class="about__text">Плагин для интеграции LAMPA с сервисом Rave для совместного просмотра фильмов и сериалов.</div>
-                                        <div class="about__text">Инструкция по использованию:</div>
-                                        <div class="about__text">1. Откройте страницу фильма или сериала</div>
-                                        <div class="about__text">2. Нажмите на кнопку "Rave"</div>
-                                        <div class="about__text">3. Ссылка будет скопирована в буфер обмена</div>
-                                        <div class="about__text">4. Отправьте ссылку друзьям или вставьте ее в приложение Rave</div>
-                                        <div class="about__text" style="margin-top: 1em;">
-                                            <b>Примечание:</b> Для корректной работы совместного просмотра 
-                                            убедитесь, что у всех участников установлено приложение Rave.
-                                        </div>
-                                    </div>
-                                `,
-                                size: 'medium',
-                                onBack: () => {
-                                    Lampa.Modal.close();
-                                    Lampa.Controller.toggle('settings_component');
-                                }
-                            });
-                        });
-                    }
-                }
-            });
-        } catch (error) {
-            console.error('Rave Plugin: Ошибка при добавлении пункта меню', error);
+    // Добавляем стили для плагина
+    const style = document.createElement('style');
+    style.textContent = `
+        .custom-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 0.3em;
         }
-    }
-
-    // Функция добавления плагина в главное меню
-    function addPluginToMenu() {
-        try {
-            // Проверяем наличие метода для добавления в меню
-            if (Lampa.Menu && Lampa.Menu.render) {
-                console.log('Rave Plugin: Добавляем в меню');
-                
-                // Проверяем есть ли уже наш пункт в меню
-                const existingSection = Lampa.Menu.getSource().find(m => m.id === 'rave-plugin');
-                
-                if (!existingSection) {
-                    // Добавляем новый пункт в меню приложения
-                    const menuSection = {
-                        id: 'rave-plugin',
-                        title: 'Rave',
-                        icon: icon,
-                        order: 100, // Позиция в меню
-                        onClick: () => {
-                            // При клике показываем информацию о плагине
-                            Lampa.Modal.open({
-                                title: 'Rave Integration',
-                                html: `
-                                    <div class="about">
-                                        <div class="about__title">Версия: ${version}</div>
-                                        <div class="about__text">Плагин для интеграции LAMPA с сервисом Rave для совместного просмотра фильмов и сериалов.</div>
-                                        <div class="about__text">Инструкция по использованию:</div>
-                                        <div class="about__text">1. Откройте страницу фильма или сериала</div>
-                                        <div class="about__text">2. Нажмите на кнопку "Rave"</div>
-                                        <div class="about__text">3. Ссылка будет скопирована в буфер обмена</div>
-                                        <div class="about__text">4. Отправьте ссылку друзьям или вставьте ее в приложение Rave</div>
-                                        <div class="about__text" style="margin-top: 1em;">
-                                            <b>Примечание:</b> Для корректной работы совместного просмотра 
-                                            убедитесь, что у всех участников установлено приложение Rave.
-                                        </div>
-                                    </div>
-                                `,
-                                size: 'medium',
-                                onBack: () => {
-                                    Lampa.Modal.close();
-                                }
-                            });
-                        }
-                    };
-                    
-                    // Добавляем раздел в главное меню
-                    Lampa.Menu.add(menuSection);
-                    console.log('Rave Plugin: Добавлен в главное меню');
-                }
-            } else {
-                console.log('Rave Plugin: API меню недоступно');
-            }
-            
-            // Также добавляем в раздел плагинов в настройках
-            if (Lampa.Settings && Lampa.Settings.main) {
-                let plugins_data = {
-                    component: 'plugins',
-                    icon: icon,
-                    name: 'Rave'
-                };
-                
-                // Если нет раздела плагинов, создаем его
-                if (Lampa.Settings.main().render().find('[data-component="plugins"]').length === 0) {
-                    let plugins_item = $('<li class="settings-folder selector" data-component="plugins"><div class="settings-folder__icon">' + icon + '</div><div class="settings-folder__name">Плагины</div></li>');
-                    Lampa.Settings.main().render().find('[data-component="more"]').after(plugins_item);
-                }
-                
-                // Если уже есть наш плагин в разделе, не добавляем повторно
-                if (Lampa.Settings.main().render().find('[data-component="rave-settings"]').length === 0) {
-                    let rave_item = $('<li class="settings-folder selector" data-component="rave-settings"><div class="settings-folder__icon">' + icon + '</div><div class="settings-folder__name">Rave</div></li>');
-                    Lampa.Settings.main().render().find('[data-component="plugins"]').after(rave_item);
-                    
-                    Lampa.Settings.main().render().find('[data-component="rave-settings"]').on('hover:enter', function() {
-                        // Показываем информацию о плагине
-                        Lampa.Modal.open({
-                            title: 'Rave Integration',
-                            html: `
-                                <div class="about">
-                                    <div class="about__title">Версия: ${version}</div>
-                                    <div class="about__text">Плагин для интеграции LAMPA с сервисом Rave для совместного просмотра фильмов и сериалов.</div>
-                                    <div class="about__text">Инструкция по использованию:</div>
-                                    <div class="about__text">1. Откройте страницу фильма или сериала</div>
-                                    <div class="about__text">2. Нажмите на кнопку "Rave"</div>
-                                    <div class="about__text">3. Ссылка будет скопирована в буфер обмена</div>
-                                    <div class="about__text">4. Отправьте ссылку друзьям или вставьте ее в приложение Rave</div>
-                                    <div class="about__text" style="margin-top: 1em;">
-                                        <b>Примечание:</b> Для корректной работы совместного просмотра 
-                                        убедитесь, что у всех участников установлено приложение Rave.
-                                    </div>
-                                </div>
-                            `,
-                            size: 'medium',
-                            onBack: () => {
-                                Lampa.Modal.close();
-                                Lampa.Controller.toggle('settings_component');
-                            }
-                        });
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Rave Plugin: Ошибка при добавлении в меню', error);
+        
+        .custom-button svg {
+            width: 1.5em;
+            height: 1.5em;
+            margin-bottom: 0.2em;
         }
-    }
+        
+        .rave-button:hover .custom-button {
+            color: #ff5722;
+        }
+        
+        .rave-plugin-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .player-panel__rave {
+            margin-right: 10px;
+        }
+        
+        .player-panel__rave svg {
+            width: 1.5em;
+            height: 1.5em;
+        }
+    `;
+    document.head.appendChild(style);
 
     // Функция инициализации плагина
     function startPlugin() {
         try {
             console.log('Rave Plugin: Инициализация плагина...');
             
-            // Добавляем пункт в настройки
-            addSettingsMenuItem();
-            
-            // Добавляем плагин в главное меню
-            addPluginToMenu();
-            
-            // Добавляем стили для кнопки Rave
-            const style = document.createElement('style');
-            style.textContent = `
-                .custom-button {
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-direction: column;
-                    padding: 0.3em;
-                }
-                
-                .custom-button svg {
-                    width: 1.5em;
-                    height: 1.5em;
-                    margin-bottom: 0.2em;
-                }
-                
-                .rave-button:hover .custom-button {
-                    color: #ff5722;
-                }
-                
-                .rave-plugin-buttons {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                    margin-top: 15px;
-                }
-            `;
-            document.head.appendChild(style);
-            
             // Функция для проверки и добавления кнопки (будет вызываться периодически)
             const tryAddButton = () => {
-                if (Lampa.Activity.active() && Lampa.Activity.active().component === 'full') {
+                if (Lampa.Activity.active() && ['full', 'movie', 'tv'].includes(Lampa.Activity.active().component)) {
                     addRaveButton();
                 }
             };
@@ -475,9 +493,21 @@
             
             // Также отслеживаем события роутера для перехватывания перехода на страницу фильма
             Lampa.Listener.follow('activity', function(e) {
-                if (e.component === 'full') {
+                if (['full', 'movie', 'tv'].includes(e.component)) {
                     console.log('Rave Plugin: Активность full', e);
                     setTimeout(tryAddButton, 500);
+                }
+            });
+            
+            // Отслеживаем события плеера для добавления кнопки в плеер
+            Lampa.Listener.follow('player', function(e) {
+                console.log('Rave Plugin: Событие плеера', e.type);
+                
+                if (e.type === 'ready') {
+                    // Пробуем добавить кнопку в плеер несколько раз с интервалом
+                    setTimeout(addRaveButtonToPlayer, 500);
+                    setTimeout(addRaveButtonToPlayer, 1000);
+                    setTimeout(addRaveButtonToPlayer, 2000);
                 }
             });
             
@@ -491,8 +521,15 @@
                                 if (node.nodeType === Node.ELEMENT_NODE) {
                                     if (node.classList && 
                                         (node.classList.contains('full-start__buttons') || 
-                                         node.classList.contains('view--torrent__buttons'))) {
+                                         node.classList.contains('view--torrent__buttons') ||
+                                         node.classList.contains('card--button') ||
+                                         node.classList.contains('card--actions'))) {
                                         return true;
+                                    }
+                                    
+                                    // Проверяем появление панели плеера
+                                    if (node.classList && node.classList.contains('player-panel')) {
+                                        setTimeout(addRaveButtonToPlayer, 500);
                                     }
                                 }
                             }
@@ -520,31 +557,67 @@
         }
     }
 
-    // Регистрация плагина
-    Lampa.Plugin.register(pluginName, {
-        type: 'video',
-        version: version,
-        name: 'Rave Integration',
-        subtitle: 'Интеграция с Rave',
-        icon: icon,
-        init: startPlugin,
-        onSettings: function(e) {
-            // Настройки при нажатии в меню плагинов
-            e.onCreate = function() {
-                let content = e.content || '';
-                
-                // Добавляем на страницу настроек информацию о плагине
-                content.html(`
-                    <div class="settings-rave-plugin">
-                        <div class="settings-folder selector" data-component="rave-about">
-                            <div class="settings-folder__icon">${icon}</div>
-                            <div class="settings-folder__name">О плагине</div>
-                        </div>
-                    </div>
-                `);
-                
-                // Обработчик клика по пункту меню "О плагине"
-                content.find('[data-component="rave-about"]').on('hover:enter', function() {
+    // Регистрация плагина через SettingsApi
+    if (Lampa.SettingsApi) {
+        // Удаляем компонент, если он уже существует (для обновления)
+        Lampa.SettingsApi.remove('rave');
+
+        // Добавляем компонент с нашим плагином
+        Lampa.SettingsApi.addComponent({
+            component: 'rave',
+            icon: icon,
+            name: 'Rave'
+        });
+
+        // Добавляем раздел "О плагине"
+        Lampa.SettingsApi.addParam({
+            component: 'rave',
+            param: {
+                type: 'title',
+                name: 'title_about'
+            },
+            field: {
+                name: 'О плагине'
+            }
+        });
+
+        // Добавляем информацию о версии
+        Lampa.SettingsApi.addParam({
+            component: 'rave',
+            param: {
+                name: 'rave_version',
+                type: 'static',
+            },
+            field: {
+                name: 'Версия',
+                value: version
+            }
+        });
+
+        // Добавляем описание
+        Lampa.SettingsApi.addParam({
+            component: 'rave',
+            param: {
+                name: 'rave_description',
+                type: 'static',
+            },
+            field: {
+                name: 'Описание',
+                value: 'Интеграция с сервисом Rave для совместного просмотра'
+            }
+        });
+
+        // Добавляем инструкцию
+        Lampa.SettingsApi.addParam({
+            component: 'rave',
+            param: {
+                name: 'rave_instruction',
+                type: 'button',
+            },
+            field: {
+                name: 'Инструкция по использованию',
+                // Действие по нажатию кнопки
+                onClick: () => {
                     Lampa.Modal.open({
                         title: 'Rave Integration',
                         html: `
@@ -553,8 +626,8 @@
                                 <div class="about__text">Плагин для интеграции LAMPA с сервисом Rave для совместного просмотра фильмов и сериалов.</div>
                                 <div class="about__text">Инструкция по использованию:</div>
                                 <div class="about__text">1. Откройте страницу фильма или сериала</div>
-                                <div class="about__text">2. Нажмите на кнопку "Rave"</div>
-                                <div class="about__text">3. Ссылка будет скопирована в буфер обмена</div>
+                                <div class="about__text">2. Нажмите на кнопку "Rave" на странице или в плеере</div>
+                                <div class="about__text">3. Скопируйте ссылку из появившегося окна</div>
                                 <div class="about__text">4. Отправьте ссылку друзьям или вставьте ее в приложение Rave</div>
                                 <div class="about__text" style="margin-top: 1em;">
                                     <b>Примечание:</b> Для корректной работы совместного просмотра 
@@ -568,14 +641,26 @@
                             Lampa.Controller.toggle('settings_component');
                         }
                     });
-                });
-            };
-        }
-    });
+                }
+            }
+        });
+    }
+
+    // Инициализация плагина - запуск после загрузки всего интерфейса
+    if (window.appready) {
+        startPlugin();
+    } else {
+        // Ждем инициализации приложения, если оно еще не готово
+        Lampa.Listener.follow('app', function(e) {
+            if (e.type === 'ready') {
+                startPlugin();
+            }
+        });
+    }
 
     // Добавляем информацию о плагине в список установленных плагинов
     if (Lampa.Storage.get('plugins_installed', '').indexOf(pluginName) === -1) {
         const plugins_installed = Lampa.Storage.get('plugins_installed', '');
         Lampa.Storage.set('plugins_installed', plugins_installed + (plugins_installed ? ', ' : '') + pluginName);
     }
-})(); 
+})();
