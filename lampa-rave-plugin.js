@@ -1,4 +1,4 @@
-(function() {
+    (function() {
     'use strict';
 
     // Проверка наличия глобального объекта Lampa
@@ -22,11 +22,11 @@
 
     // Объект конфигурации плагина
     const config = {
-        author: 'Lampa User',
+        author: 'LinuxFlow1',
         name: 'Rave Integration',
         version: version,
         description: 'Интеграция с сервисом Rave для совместного просмотра',
-        path: 'lampa-rave-plugin.js'
+        path: 'https://raw.githubusercontent.com/LinuxFlow1/lampa-rave-plugin/main/lampa-rave-plugin.js'
     };
 
     // Функция для создания ссылки на Rave
